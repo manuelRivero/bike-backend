@@ -25,17 +25,15 @@ const createSaleFromAdmin = {
         is: "1" | "2",
         then: Joi.required(),
       }),
-      products: Joi.array()
-        .when("orderType", {
-          is: "0" | "2",
-          then: Joi.array().items(
-            Joi.object({
-              _id: Joi.string().required(),
-              quantity: Joi.number().required(),
-            }).required()
-          ),
-        })
-        ,
+      products: Joi.array().when("orderType", {
+        is: "0" | "2",
+        then: Joi.array().items(
+          Joi.object({
+            _id: Joi.string().required(),
+            quantity: Joi.number().required(),
+          }).required()
+        ),
+      }),
     });
     validation.validateBody(req, next, schema);
   },
@@ -44,9 +42,9 @@ const createSaleFromAdmin = {
     const { products, paymentMethod, repairTotal, description, orderType } =
       req.body;
     const errorProducts = [];
-    
+
     let total = 0;
-    
+
     if ((orderType === 0) | (orderType === 2)) {
       products.forEach(async (element) => {
         if (element.quantity <= 0) {
@@ -76,7 +74,6 @@ const createSaleFromAdmin = {
         });
         return;
       }
-
 
       for (product of products) {
         const targetProduct = await Product.findOne({
@@ -233,16 +230,14 @@ const getSales = async (req, res) => {
   const page = Number(req.query.page) || 0;
   const status = query.status ? { status: orderStatus[query.status] } : {};
 
-  const [sales, total] = await Promise.all(
-    [
-      Sale.find({ ...status, page })
-        .populate({ path: "user", select: "name lastname email provider" })
-        .skip(page * 10)
-        .limit(10),
-        Sale.find({ ...status}).count()
-    ]
-  );
-  console.log("sales", sales, total)
+  const [sales, total] = await Promise.all([
+    Sale.find({ ...status, page })
+      .populate({ path: "user", select: "name lastname email provider" })
+      .skip(page * 10)
+      .limit(10),
+    Sale.find({ ...status }).count(),
+  ]);
+  console.log("sales", sales, total);
 
   res.status(200).json({
     ok: true,
@@ -314,8 +309,8 @@ const changeSaleStatus = {
 };
 const getMonthlySales = async (req, res) => {
   const { query } = req;
-  const startOfMonth = moment(query.date, "DD-MM-YYYY").startOf("month");
-  const endOfMonth = moment(query.date, "DD-MM-YYYY").endOf("month");
+  const startOfMonth = moment(query.date, "DD-MM-YYYY").utc().startOf("month");
+  const endOfMonth = moment(query.date, "DD-MM-YYYY").utc().endOf("month");
 
   const dateQuery = {
     createdAt: {
@@ -377,44 +372,27 @@ const dailySales = {
   do: async (req, res, next) => {
     let date = req.query.from;
 
-    const sales = await Sale.aggregate([
-      {
-        $match: {
-          createdAt: {
-            $lte: moment(date).utc().endOf("date").toDate(),
-            $gte: moment(date).utc().startOf("date").toDate(),
-          },
-        },
+    const sales = await Sale.find({
+      createdAt: {
+        $gte: new Date(moment(date, "DD-MM-YYYY").utc().startOf("date")),
+        $lte: new Date(moment(date, "DD-MM-YYYY").utc().endOf("date")),
       },
-      { $unwind: "$products" },
-      {
-        $group: {
-          _id: { _id: "$products.data._id", data: "$products.data" },
-          quantity: { $sum: { $toDouble: "$products.quantity" } },
-        },
-      },
-      // {
-      //   $lookup: {
-      //     from: "products",
-      //     localField: "_id",
-      //     foreignField: "_id",
-      //     as: "product_data",
-      //   },
-      // },
-      // { $unwind: "$product_data" },
-      // {
-      //   $project: {
-      //     _id: 1,
-      //     quantity: 1,
-      //     product_data: "$product_data",
-      //   },
-      // },
-    ]);
+    });
+    // const sales = await Sale.aggregate([
+    //   {
+    //     $match: {
+    //       createdAt: {
+    //         $lte: moment(date, "DD-MM-YYYY").utc().endOf("date").toDate(),
+    //         $gte: moment(date, "DD-MM-YYYY").utc().startOf("date").toDate(),
+    //       },
+    //     },
+    //   },
+    // ]);
 
     let total = 0;
     console.log("sales", sales);
     sales.forEach((sale) => {
-      total = total + parseInt(sale._id.data.price) * parseInt(sale.quantity);
+      total = total + parseInt(sale.total);
     });
 
     res.status(200).json({
