@@ -7,6 +7,12 @@ const orderStatus = {
     5:"CANCELADO"
 }
 
+const orderType = {
+    0: "VENTA",
+    1: "REPARACIÓN",
+    2: "REPARACIÓN Y VENTA"
+}
+
 module.exports={
     orderStatus
 }

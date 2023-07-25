@@ -43,6 +43,12 @@ const SaleSchema = Schema(
     total: {
       type: Number,
     },
+    ordenType:{
+      type: Number
+    },
+    description:{
+      type: String
+    }
   },
   { colletion: "Sales", timestamps: true }
 );

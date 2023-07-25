@@ -11,94 +11,138 @@ const Joi = require("joi");
 const createSaleFromAdmin = {
   check: async (req, res, next) => {
     const schema = Joi.object({
+      total: Joi.string().when("orderType", {
+        is: "1" | "2",
+        then: Joi.required(),
+      }),
       paymentMethod: Joi.number().required().valid(1, 0),
+      orderType: Joi.number().required().valid(0, 1, 2),
+      repairTotal: Joi.string().when("orderType", {
+        is: "1" | "2",
+        then: Joi.required(),
+      }),
+      description: Joi.string().when("orderType", {
+        is: "1" | "2",
+        then: Joi.required(),
+      }),
       products: Joi.array()
-        .items(
-          Joi.object({
-            _id: Joi.string().required(),
-            quantity: Joi.number().required(),
-          })
-        )
-        .required(),
+        .when("orderType", {
+          is: "0" | "2",
+          then: Joi.array().items(
+            Joi.object({
+              _id: Joi.string().required(),
+              quantity: Joi.number().required(),
+            }).required()
+          ),
+        })
+        ,
     });
     validation.validateBody(req, next, schema);
   },
   do: async (req, res, next) => {
     const { uid } = req;
-    const { products, paymentMethod } = req.body;
+    const { products, paymentMethod, repairTotal, description, orderType } =
+      req.body;
     const errorProducts = [];
-    products.forEach(async (element) => {
-      if (element.quantity <= 0) {
-        errorProducts.push({
-          _id: element._id,
-          error: "Se envió una cantidad de cero",
-        });
-        return;
-      }
-
-      const targetProduct = await Product.findOne({
-        _id: mongoose.Types.ObjectId(element._id),
-      });
-      if (!targetProduct) {
-        errorProducts.push({
-          _id: element._id,
-          error: "No existe el producto",
-        });
-      }
-    });
-
-    if (errorProducts.length > 0) {
-      res.status(400).json({
-        ok: false,
-        message: "No se pudo procesar la orden de los siguientes productos",
-        errorProducts,
-      });
-      return;
-    }
-
+    
     let total = 0;
+    
+    if ((orderType === 0) | (orderType === 2)) {
+      products.forEach(async (element) => {
+        if (element.quantity <= 0) {
+          errorProducts.push({
+            _id: element._id,
+            error: "Se envió una cantidad de cero",
+          });
+          return;
+        }
 
-    for (product of products) {
-      const targetProduct = await Product.findOne({
-        _id: mongoose.Types.ObjectId(product._id),
+        const targetProduct = await Product.findOne({
+          _id: mongoose.Types.ObjectId(element._id),
+        });
+        if (!targetProduct) {
+          errorProducts.push({
+            _id: element._id,
+            error: "No existe el producto",
+          });
+        }
       });
-      if (targetProduct.stock < product.quantity) {
-        errorProducts.push({ _id: product._id, error: "Producto sin stock" });
+
+      if (errorProducts.length > 0) {
+        res.status(400).json({
+          ok: false,
+          message: "No se pudo procesar la orden de los siguientes productos",
+          errorProducts,
+        });
         return;
       }
 
-      targetProduct.stock = targetProduct.stock - Number(product.quantity);
 
-      product.name = targetProduct.name;
-      product.price = targetProduct.price;
-      product.discount = targetProduct.discount | null;
+      for (product of products) {
+        const targetProduct = await Product.findOne({
+          _id: mongoose.Types.ObjectId(product._id),
+        });
+        if (targetProduct.stock < product.quantity) {
+          errorProducts.push({ _id: product._id, error: "Producto sin stock" });
+          return;
+        }
 
-      await targetProduct.save();
-      let discount = 0;
-      if (targetProduct.discount) {
-        discount = (targetProduct.price * targetProduct.discount) / 100;
-        total =
-          total + (targetProduct.price - discount) * Number(product.quantity);
-      } else {
-        total = total + targetProduct.price * Number(product.quantity);
+        targetProduct.stock = targetProduct.stock - Number(product.quantity);
+
+        product.name = targetProduct.name;
+        product.price = targetProduct.price;
+        product.discount = targetProduct.discount | null;
+
+        await targetProduct.save();
+        let discount = 0;
+        if (targetProduct.discount) {
+          discount = (targetProduct.price * targetProduct.discount) / 100;
+          total =
+            total + (targetProduct.price - discount) * Number(product.quantity);
+        } else {
+          total = total + targetProduct.price * Number(product.quantity);
+        }
       }
     }
+
+    const handleTotal = (total) => {
+      switch (orderType) {
+        case "0":
+          return total;
+          break;
+        case "1":
+          return repairTotal;
+          break;
+        case "2":
+          return repairTotal + total;
+          break;
+
+        default:
+          break;
+      }
+    };
 
     const sale = new Sale({
-      products: products.map((e) => {
-        return {
-          data: {
-            _id: e._id,
-            name: e.name,
-            price: e.price,
-            discount: e.discount | null,
-          },
-          quantity: e.quantity,
-        };
-      }),
+      products:
+        orderType === 1 || orderType === 2
+          ? products.map((e) => {
+              return {
+                data: {
+                  _id: e._id,
+                  name: e.name,
+                  price: e.price,
+                  discount: e.discount | null,
+                },
+                quantity: e.quantity,
+              };
+            })
+          : null,
+
       user: { _id: uid },
-      total,
-      paymentMethod: paymentMethod,
+      orderType,
+      total: handleTotal(total),
+      description: description ? description : null,
+      paymentMethod,
       status: orderStatus[2],
     });
 
@@ -205,24 +249,24 @@ const getSales = async (req, res) => {
     total,
   });
 };
-const getSaleDetail = async (req, res) =>{ 
-  const {id} = req.query;
-  if(!id){
+const getSaleDetail = async (req, res) => {
+  const { id } = req.query;
+  if (!id) {
     return res.status(400).json({
-      ok:false,
-      message:"No se agrego el id de la orden en el request"
-    })
+      ok: false,
+      message: "No se agrego el id de la orden en el request",
+    });
   }
 
   const sale = await Sale.aggregate([
-    {$match:{_id: mongoose.Types.ObjectId(id)}}
-  ])
-  console.log("sale", sale)
+    { $match: { _id: mongoose.Types.ObjectId(id) } },
+  ]);
+  console.log("sale", sale);
   return res.json({
-    ok:true,
-    data:sale[0]
-  })
-}
+    ok: true,
+    data: sale[0],
+  });
+};
 const changeSaleStatus = {
   check: async (req, res, next) => {
     const schema = Joi.object({
@@ -344,7 +388,7 @@ const dailySales = {
       { $unwind: "$products" },
       {
         $group: {
-          _id: {_id:"$products.data._id", data: "$products.data"},
+          _id: { _id: "$products.data._id", data: "$products.data" },
           quantity: { $sum: { $toDouble: "$products.quantity" } },
         },
       },
@@ -369,8 +413,7 @@ const dailySales = {
     let total = 0;
     console.log("sales", sales);
     sales.forEach((sale) => {
-      total =
-        total + parseInt(sale._id.data.price) * parseInt(sale.quantity);
+      total = total + parseInt(sale._id.data.price) * parseInt(sale.quantity);
     });
 
     res.status(200).json({
@@ -388,5 +431,5 @@ module.exports = {
   getMonthlySales,
   changeSaleStatus,
   createSaleFromAdmin,
-  getSaleDetail
+  getSaleDetail,
 };
