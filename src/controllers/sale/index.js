@@ -104,17 +104,16 @@ const createSaleFromAdmin = {
         }
       }
     }
-
     const handleTotal = (total) => {
       switch (orderType) {
-        case "0":
-          return total;
+        case 0:
+          return parseInt(total);
           break;
-        case "1":
-          return repairTotal;
+        case 1:
+          return parseInt(repairTotal);
           break;
-        case "2":
-          return repairTotal + total;
+        case 2:
+          return parseInt(repairTotal) + parseInt(total);
           break;
 
         default:
@@ -124,7 +123,7 @@ const createSaleFromAdmin = {
 
     const sale = new Sale({
       products:
-        orderType === 1 || orderType === 2
+        orderType === 0 || orderType === 2
           ? products.map((e) => {
               return {
                 data: {
@@ -236,13 +235,15 @@ const getSales = async (req, res) => {
 
   const [sales, total] = await Promise.all(
     [
-      Sale.find({ ...status })
+      Sale.find({ ...status, page })
         .populate({ path: "user", select: "name lastname email provider" })
         .skip(page * 10)
         .limit(10),
-    ],
-    Sale.find().count()
+        Sale.find({ ...status}).count()
+    ]
   );
+  console.log("sales", sales, total)
+
   res.status(200).json({
     ok: true,
     sales,

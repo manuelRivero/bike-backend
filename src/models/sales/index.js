@@ -43,7 +43,7 @@ const SaleSchema = Schema(
     total: {
       type: Number,
     },
-    ordenType:{
+    orderType:{
       type: Number
     },
     description:{
