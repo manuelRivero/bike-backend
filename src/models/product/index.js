@@ -27,16 +27,16 @@ const ProductSchema = Schema(
         },
       ],
     },
-    tags: {
-      type: [
-        {
-          name: {
-            type: String,
-            required: true,
-          },
-        },
-      ],
-    },
+    // tags: {
+    //   type: [
+    //     {
+    //       name: {
+    //         type: String,
+    //         required: true,
+    //       },
+    //     },
+    //   ],
+    // },
     description:{
       type:String
     },

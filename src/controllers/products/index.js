@@ -23,7 +23,6 @@ const createProduct = {
         error: "Las imagenes son requeridas",
       });
     } else {
-      req.body.tags = JSON.parse(body.tags);
       req.body.status = JSON.parse(body.status);
       validation.validateBody(req, next, createProductSchema);
     }
